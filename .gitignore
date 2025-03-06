@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env/
+.venv/
+env/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
+
+# Project specific
+*.log
+login_page_debug.html
+*_debug.html
+*.csv
+*.json
+parcels_*.csv
+parcels_*.json
+parcel_*.csv
+parcel_*.json
+after_login.png
+login_failed.png
+initial_page.png
+login_page_source*.html
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Documentation
+docs/_build/
+docs/api/
+
+# Temporary files
+tmp/
+temp/
+.DS_Store 
