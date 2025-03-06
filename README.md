@@ -1,19 +1,3 @@
-<think>
-I need to update the README.md with finishing touches and adapt to the changes made in the project. The user has also renamed requirements-dev.txt to requirements.txt, so I need to reflect that in the documentation.
-
-Let me create a comprehensive README that covers:
-1. Project overview
-2. Installation instructions
-3. Usage examples
-4. Command line interface
-5. Development setup
-6. License information
-7. Badges and other professional elements
-8. Acknowledgments
-
-I'll address the specific change they made to the GitHub Actions workflow (installing from requirements.txt rather than .[dev]). I'll also make sure the README aligns with the author name "poiley" they've used in setup.py.
-</think>
-
 # ParcelPending
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -55,12 +39,6 @@ pip install -r requirements.txt
 
 # Install the package in development mode
 pip install -e .
-```
-
-### Install from PyPI (once published)
-
-```bash
-pip install parcelpending
 ```
 
 ## Usage
