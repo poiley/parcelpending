@@ -203,38 +203,38 @@ class ParcelPendingClient:
             logger.info(
                 f"Requesting parcel history with delivery dates from {start_date} to {end_date}"
             )
-            
+
             all_parcels = []
             current_page = 1
             has_more_pages = True
-            
+
             while has_more_pages:
                 # Add page parameter for pages after the first
                 page_params = params.copy()
                 if current_page > 1:
                     page_params["page"] = current_page
-                    
+
                 logger.debug(f"Fetching page {current_page}")
-                
+
                 response = self.session.get(self.PARCEL_HISTORY_URL, params=page_params)
                 response.raise_for_status()
-                
+
                 soup = BeautifulSoup(response.text, "html.parser")
-                
+
                 # Parse parcels from current page
                 parcels = self._parse_parcels(soup)
                 all_parcels.extend(parcels)
-                
+
                 logger.debug(f"Found {len(parcels)} parcels on page {current_page}")
-                
+
                 # Check if there are more pages
                 has_more_pages = self._has_next_page(soup, current_page)
-                
+
                 if has_more_pages:
                     current_page += 1
                 else:
                     logger.debug("No more pages found")
-                    
+
             logger.info(f"Retrieved a total of {len(all_parcels)} parcels across {current_page} page(s)")
             return all_parcels
 
@@ -248,11 +248,11 @@ class ParcelPendingClient:
     def _has_next_page(self, soup, current_page):
         """
         Determine if there is a next page of results.
-        
+
         Args:
             soup (BeautifulSoup): Parsed HTML of the current page
             current_page (int): Current page number
-            
+
         Returns:
             bool: True if there is a next page, False otherwise
         """
@@ -262,19 +262,19 @@ class ParcelPendingClient:
             if not pagination:
                 # Try alternative pagination elements
                 pagination = soup.find("ul", class_="pagination")
-                
+
             if pagination:
                 # Look for "next" button/link that is not disabled
                 next_link = pagination.find("li", class_="next")
                 if next_link and "disabled" not in next_link.get("class", []):
                     return True
-                    
+
                 # Check if there's a link to a page higher than current_page
                 page_links = pagination.find_all("a")
                 for link in page_links:
                     if link.text.isdigit() and int(link.text) > current_page:
                         return True
-                
+
                 # Check if we can determine the total number of entries
                 info_div = soup.find("div", class_="dataTables_info")
                 if info_div:
@@ -284,7 +284,7 @@ class ParcelPendingClient:
                         total_entries = int(matches.group(1))
                         entries_per_page = 20  # ParcelPending seems to use 20 entries per page
                         return current_page * entries_per_page < total_entries
-            
+
             return False
         except Exception as e:
             logger.warning(f"Error checking for next page: {str(e)}")
@@ -312,14 +312,14 @@ class ParcelPendingClient:
             if valid_rows:
                 logger.debug(f"Found {len(valid_rows)} rows containing package information")
                 return self._parse_parcels_from_table_rows(valid_rows)
-        
+
         # If table parsing fails, fall back to original method and alternatives
         parcel_sections = soup.find_all("div", class_="parcel-section")
-        
+
         # If that doesn't work, try some alternative approaches
         if not parcel_sections:
             logger.debug("No parcel sections found with class='parcel-section', trying alternatives")
-            
+
             # Look for generic containers that might contain parcel information
             parcel_containers = soup.find_all(["div", "section", "article"],
                                               class_=lambda c: c and ("parcel" in c.lower()
@@ -395,24 +395,24 @@ class ParcelPendingClient:
     def _parse_parcels_from_table_rows(self, rows):
         """
         Parse parcels from table rows that match the current HTML structure.
-        
+
         Args:
             rows (list): List of table row elements containing parcel data
-            
+
         Returns:
             list: Extracted parcels
         """
         parcels = []
-        
+
         for row in rows:
             parcel = {}
-            
+
             # Extract package code
             package_code_text = row.find(string=lambda t: t and "Package Code:" in t)
             if package_code_text:
                 package_code = package_code_text.strip().replace("Package Code:", "").strip()
                 parcel["package_code"] = package_code
-            
+
             # Extract package status - need to examine the structure more carefully
             status_div = row.find(string=lambda t: t and "Package Status:" in t)
             if status_div:
@@ -428,7 +428,7 @@ class ParcelPendingClient:
                         status_text = status_div.strip().replace("Package Status:", "").strip()
                         if status_text:
                             parcel["status"] = status_text
-            
+
             # Extract locker information
             locker_text = row.find(string=lambda t: t and "Locker Box #:" in t)
             if locker_text:
@@ -440,7 +440,7 @@ class ParcelPendingClient:
                     parcel["locker_box"] = locker_str.split("(")[0].strip()
                 else:
                     parcel["locker_box"] = locker_str
-            
+
             # Extract courier - traverse up to find containing element for more context
             courier_text = row.find(string=lambda t: t and "Courier:" in t)
             if courier_text:
@@ -457,13 +457,13 @@ class ParcelPendingClient:
                         # Fallback to basic text extraction
                         courier = full_text.replace("Courier:", "").strip()
                         parcel["courier"] = courier
-            
+
             # Extract tracking number if available
             tracking_text = row.find(string=lambda t: t and "Tracking:" in t)
             if tracking_text:
                 tracking = tracking_text.strip().replace("Tracking:", "").strip()
                 parcel["tracking_number"] = tracking
-            
+
             # Extract delivery date from the parcel-activity cell
             activity_cell = row.find("td", class_="parcel-activity")
             if activity_cell:
@@ -471,10 +471,10 @@ class ParcelPendingClient:
                 delivery_match = re.search(r'Delivered:\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}\s+[ap]m)', delivery_text)
                 if delivery_match:
                     parcel["delivery_date"] = delivery_match.group(1)
-            
+
             if parcel:  # Only add if we found any data
                 parcels.append(parcel)
-        
+
         logger.info(f"Found {len(parcels)} parcels from table rows")
         return parcels
 
