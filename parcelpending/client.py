@@ -181,7 +181,7 @@ class ParcelPendingClient:
             end_date = end_date.strftime("%m/%d/%Y")
 
         try:
-            # Navigate to parcel history page with the correct parameters
+            # Base parameters for all requests
             params = {
                 "occupant_first_name": "",
                 "occupant_last_name": "",
@@ -203,16 +203,40 @@ class ParcelPendingClient:
             logger.info(
                 f"Requesting parcel history with delivery dates from {start_date} to {end_date}"
             )
-            logger.debug(f"Full params: {params}")
-
-            response = self.session.get(self.PARCEL_HISTORY_URL, params=params)
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.text, "html.parser")
-
-            parcels = self._parse_parcels(soup)
-
-            return parcels
+            
+            all_parcels = []
+            current_page = 1
+            has_more_pages = True
+            
+            while has_more_pages:
+                # Add page parameter for pages after the first
+                page_params = params.copy()
+                if current_page > 1:
+                    page_params["page"] = current_page
+                    
+                logger.debug(f"Fetching page {current_page}")
+                
+                response = self.session.get(self.PARCEL_HISTORY_URL, params=page_params)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, "html.parser")
+                
+                # Parse parcels from current page
+                parcels = self._parse_parcels(soup)
+                all_parcels.extend(parcels)
+                
+                logger.debug(f"Found {len(parcels)} parcels on page {current_page}")
+                
+                # Check if there are more pages
+                has_more_pages = self._has_next_page(soup, current_page)
+                
+                if has_more_pages:
+                    current_page += 1
+                else:
+                    logger.debug("No more pages found")
+                    
+            logger.info(f"Retrieved a total of {len(all_parcels)} parcels across {current_page} page(s)")
+            return all_parcels
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Connection error retrieving parcel history: {str(e)}")
@@ -220,6 +244,52 @@ class ParcelPendingClient:
         except Exception as e:
             logger.error(f"Unexpected error retrieving parcel history: {str(e)}")
             raise ParcelPendingError(f"Failed to retrieve parcel history: {str(e)}")
+
+    def _has_next_page(self, soup, current_page):
+        """
+        Determine if there is a next page of results.
+        
+        Args:
+            soup (BeautifulSoup): Parsed HTML of the current page
+            current_page (int): Current page number
+            
+        Returns:
+            bool: True if there is a next page, False otherwise
+        """
+        try:
+            # Look for pagination elements
+            pagination = soup.find("div", class_="dataTables_paginate")
+            if not pagination:
+                # Try alternative pagination elements
+                pagination = soup.find("ul", class_="pagination")
+                
+            if pagination:
+                # Look for "next" button/link that is not disabled
+                next_link = pagination.find("li", class_="next")
+                if next_link and "disabled" not in next_link.get("class", []):
+                    return True
+                    
+                # Check if there's a link to a page higher than current_page
+                page_links = pagination.find_all("a")
+                for link in page_links:
+                    if link.text.isdigit() and int(link.text) > current_page:
+                        return True
+                
+                # Check if we can determine the total number of entries
+                info_div = soup.find("div", class_="dataTables_info")
+                if info_div:
+                    info_text = info_div.get_text(strip=True)
+                    matches = re.search(r'Showing \d+ to \d+ of (\d+) entries', info_text)
+                    if matches:
+                        total_entries = int(matches.group(1))
+                        entries_per_page = 20  # ParcelPending seems to use 20 entries per page
+                        return current_page * entries_per_page < total_entries
+            
+            return False
+        except Exception as e:
+            logger.warning(f"Error checking for next page: {str(e)}")
+            # If we can't determine, assume no more pages
+            return False
 
     def _parse_parcels(self, soup):
         """
