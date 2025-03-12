@@ -55,8 +55,6 @@ def list_parcels(client, days, active_only=False, courier=None, debug=False):
 
     except Exception as e:
         logger.error(f"Error listing parcels: {e}")
-        if debug:
-            logger.exception("Detailed error information:")
         return []
 
 
@@ -147,8 +145,6 @@ def main():
         sys.exit(1)
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
-        if args.debug:
-            logger.exception("Detailed error information:")
         sys.exit(1)
 
     sys.exit(0)

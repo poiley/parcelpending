@@ -44,10 +44,9 @@ htmlcov/
 
 # Project specific
 *.log
-login_page_debug.html
-*_debug.html
 *.csv
 *.json
+*.html
 parcels_*.csv
 parcels_*.json
 parcel_*.csv
@@ -55,7 +54,8 @@ parcel_*.json
 after_login.png
 login_failed.png
 initial_page.png
-login_page_source*.html
+coverage.xml
+.flake8
 
 # Distribution
 dist/

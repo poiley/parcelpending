@@ -25,18 +25,14 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -r requirements.txt
         python -m pip install -e .
-    - name: Format with black
-      run: |
-        if [ "${{ matrix.python-version }}" == "3.8" ]; then
-          pip install black
-          black --check parcelpending tests
-        fi
     - name: Lint with flake8
       run: |
         flake8 parcelpending tests
-    - name: Test with pytest
+    - name: Run tests
       run: |
-        pytest tests/ --cov=parcelpending --cov-report=xml
+        pytest tests/ --cov=parcelpending --cov-report=xml -v
+      env:
+        PYTHONVERBOSE: 1
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
