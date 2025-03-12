@@ -1,4 +1,4 @@
-name: ParcelPending Python package
+name: ParcelPending Linting and Testing
 
 on:
   push:
