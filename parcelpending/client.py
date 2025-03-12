@@ -233,19 +233,23 @@ class ParcelPendingClient:
         """
         parcels = []
 
-        # First, try the original approach
+        # First, try to parse from table rows which seems to be the actual structure
+        parcel_rows = soup.find_all("tr")
+        if parcel_rows:
+            logger.debug(f"Found {len(parcel_rows)} table rows to check for parcels")
+            # Filter rows that contain package info
+            valid_rows = [row for row in parcel_rows if row.find(string=lambda t: t and "Package Code:" in t)]
+            if valid_rows:
+                logger.debug(f"Found {len(valid_rows)} rows containing package information")
+                return self._parse_parcels_from_table_rows(valid_rows)
+        
+        # If table parsing fails, fall back to original method and alternatives
         parcel_sections = soup.find_all("div", class_="parcel-section")
-
+        
         # If that doesn't work, try some alternative approaches
         if not parcel_sections:
             logger.debug("No parcel sections found with class='parcel-section', trying alternatives")
-
-            # Look for table rows that might contain parcel data
-            parcel_rows = soup.find_all("tr", class_=lambda c: c and ("parcel" in c.lower() or "package" in c.lower()))
-            if parcel_rows:
-                logger.debug(f"Found {len(parcel_rows)} potential parcel rows in table")
-                return self._parse_parcels_from_table(parcel_rows)
-
+            
             # Look for generic containers that might contain parcel information
             parcel_containers = soup.find_all(["div", "section", "article"],
                                               class_=lambda c: c and ("parcel" in c.lower()
@@ -279,12 +283,20 @@ class ParcelPendingClient:
                 package_code = package_code.replace("Package Code:", "").strip()
                 parcel["package_code"] = package_code
 
-            # Extract status
-            status_div = section.find(string=lambda t: t and "Package Status:" in t)
-            if status_div:
-                status = status_div.strip()
-                status = status.replace("Package Status:", "").strip()
-                parcel["status"] = status
+            # Extract status - need to find the span after "Package Status:"
+            status_text = section.find(string=lambda t: t and "Package Status:" in t)
+            if status_text:
+                # Find the parent element containing "Package Status:"
+                parent = status_text.parent
+                # Look for the span that contains the actual status
+                status_span = parent.find("span")
+                if status_span:
+                    status = status_span.get_text(strip=True)
+                    parcel["status"] = status
+                else:
+                    # Fallback to original approach
+                    status = status_text.strip().replace("Package Status:", "").strip()
+                    parcel["status"] = status
 
             # Extract locker box and size
             locker_box_div = section.find(string=lambda t: t and "Locker Box #:" in t)
@@ -310,55 +322,89 @@ class ParcelPendingClient:
         logger.info(f"Found {len(parcels)} parcels")
         return parcels
 
-    def _parse_parcels_from_table(self, rows):
+    def _parse_parcels_from_table_rows(self, rows):
         """
-        Parse parcels from table rows.
-
+        Parse parcels from table rows that match the current HTML structure.
+        
         Args:
-            rows (list): List of table row elements
-
+            rows (list): List of table row elements containing parcel data
+            
         Returns:
             list: Extracted parcels
         """
         parcels = []
-
+        
         for row in rows:
             parcel = {}
-            cells = row.find_all("td")
-
-            # Try to identify content by column headers or cell classes
-            for cell in cells:
-                cell_class = cell.get("class", "")
-                cell_text = cell.get_text(strip=True)
-
-                if not cell_text:
-                    continue
-
-                if any(c in str(cell_class).lower() for c in ["code", "package-code", "id"]):
-                    parcel["package_code"] = cell_text
-                elif any(c in str(cell_class).lower() for c in ["status", "state"]):
-                    parcel["status"] = cell_text
-                elif any(c in str(cell_class).lower() for c in ["locker", "box"]):
-                    parcel["locker_box"] = cell_text
-                elif any(c in str(cell_class).lower() for c in ["courier", "carrier"]):
-                    parcel["courier"] = cell_text
-                # Add date parsing if there is delivery/pickup date columns
-
-            # Try to extract text from spans with recognizable text
-            for label, value in [
-                ("Package Code:", "package_code"),
-                ("Package Status:", "status"),
-                ("Locker Box #:", "locker_box"),
-                ("Courier:", "courier")
-            ]:
-                element = row.find(string=lambda t: t and label in t)
-                if element:
-                    text = element.strip().replace(label, "").strip()
-                    parcel[value] = text
-
+            
+            # Extract package code
+            package_code_text = row.find(string=lambda t: t and "Package Code:" in t)
+            if package_code_text:
+                package_code = package_code_text.strip().replace("Package Code:", "").strip()
+                parcel["package_code"] = package_code
+            
+            # Extract package status - need to examine the structure more carefully
+            status_div = row.find(string=lambda t: t and "Package Status:" in t)
+            if status_div:
+                # Try to find the status in a span element within the same parent cell
+                parent_cell = status_div.find_parent("td")
+                if parent_cell:
+                    status_span = parent_cell.find("span", id=lambda i: i and i.startswith("status-"))
+                    if status_span:
+                        status = status_span.get_text(strip=True)
+                        parcel["status"] = status
+                    else:
+                        # Fallback: get text after "Package Status:" string
+                        status_text = status_div.strip().replace("Package Status:", "").strip()
+                        if status_text:
+                            parcel["status"] = status_text
+            
+            # Extract locker information
+            locker_text = row.find(string=lambda t: t and "Locker Box #:" in t)
+            if locker_text:
+                locker_str = locker_text.strip().replace("Locker Box #:", "").strip()
+                # Check for size in parentheses
+                size_match = re.search(r'\(([^)]+)\)', locker_str)
+                if size_match:
+                    parcel["size"] = size_match.group(1)
+                    parcel["locker_box"] = locker_str.split("(")[0].strip()
+                else:
+                    parcel["locker_box"] = locker_str
+            
+            # Extract courier - traverse up to find containing element for more context
+            courier_text = row.find(string=lambda t: t and "Courier:" in t)
+            if courier_text:
+                # Look for the text immediately following the "Courier:" label
+                courier_parent = courier_text.find_parent()
+                if courier_parent:
+                    # Get the full text and extract what comes after "Courier:"
+                    full_text = courier_parent.get_text(strip=True)
+                    courier_match = re.search(r'Courier:(.*?)(?:$|Tracking:|Locker)', full_text)
+                    if courier_match:
+                        courier = courier_match.group(1).strip()
+                        parcel["courier"] = courier
+                    else:
+                        # Fallback to basic text extraction
+                        courier = full_text.replace("Courier:", "").strip()
+                        parcel["courier"] = courier
+            
+            # Extract tracking number if available
+            tracking_text = row.find(string=lambda t: t and "Tracking:" in t)
+            if tracking_text:
+                tracking = tracking_text.strip().replace("Tracking:", "").strip()
+                parcel["tracking_number"] = tracking
+            
+            # Extract delivery date from the parcel-activity cell
+            activity_cell = row.find("td", class_="parcel-activity")
+            if activity_cell:
+                delivery_text = activity_cell.get_text()
+                delivery_match = re.search(r'Delivered:\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}\s+[ap]m)', delivery_text)
+                if delivery_match:
+                    parcel["delivery_date"] = delivery_match.group(1)
+            
             if parcel:  # Only add if we found any data
                 parcels.append(parcel)
-
+        
         logger.info(f"Found {len(parcels)} parcels from table rows")
         return parcels
 
