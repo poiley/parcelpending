@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="parcelpending",
-    version="0.1.3",
+    version="1.0.0",
     author="poiley",
     author_email="benjpoile@gmail.com",
     description="A Python client for the ParcelPending website",
